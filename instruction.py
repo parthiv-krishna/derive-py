@@ -41,12 +41,14 @@ class Instruction():
 
 
     def to_c_function(self):
-        result = f"static uint32_t {self.arch}_{self.name}("
+        n_bits = len(self.opcode) * 8
+        
+        result = f"static inline uint{n_bits}_t {self.arch}_{self.name}("
         for i, arg in enumerate(self.args):
             if (i == 0):
-                result += f"uint32_t {arg}"
+                result += f"uint{n_bits}_t {arg}"
             else:
-                result += f", uint32_t {arg}"
+                result += f", uint{n_bits}_t {arg}"
 
         result += ") {\n"
 
