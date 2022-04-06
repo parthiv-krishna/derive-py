@@ -35,7 +35,7 @@ class ArmNoneEabiAssembler(Assembler):
 
         
         # Assemble the file
-        retcode = subprocess.call(["arm-none-eabi-gcc", "-c", self.asm_file, "-o", self.obj_file])
+        retcode = subprocess.call(["arm-none-eabi-as", "--warn", "-mcpu=arm1176jzf-s", "-march=armv6zk", self.asm_file, "-o", self.obj_file])
         if retcode != 0:
             raise RuntimeError(f"Error assembling instruction: `{instruction}`")
 
@@ -72,17 +72,20 @@ asm = ArmNoneEabiAssembler({"memmap": "memmap",
 templates = [
     ("add", "add @r, @r, @r", ["dst", "src1", "src2"]),
     ("add_imm", "add @r, @r, #@i", ["dst", "src", "imm"]),
+    ("add_lsl", "add @r, @r, @r, LSL #@s", ["dst", "src1", "src2", "shift"]),
     ("sub", "sub @r, @r, @r", ["dst", "src1", "src2"]),
     ("sub_imm", "sub @r, @r, #@i", ["dst", "src", "imm"]),
     ("and", "and @r, @r, @r", ["dst", "src1", "src2"]),
     ("or", "orr @r, @r, @r", ["dst", "src1", "src2"]),
     ("mov_reg", "mov @r, @r", ["dst", "src"]),
     ("mov_imm", "mov @r, #@i", ["dst", "imm"]),
-    ("ldr_no_off", "ldr @r, [@r]", ["dst", "addr"]),
+    ("ldr", "ldr @r, [@r]", ["dst", "addr"]),
     ("ldr_imm_off", "ldr @r, [@r, #@i]", ["dst", "addr", "offset"]),
-    ("str_no_off", "str @r, [@r]", ["src", "addr"]),
+    ("str", "str @r, [@r]", ["src", "addr"]),
     ("str_imm_off", "str @r, [@r, #@i]", ["src", "addr", "offset"]),
     ("nop", "nop", []),
+    ("bx", "bx @r", ["reg"]),
+    ("blx", "blx @r", ["reg"]),
     # ("b", "b @b", ["offset"]),
 ]
 
@@ -94,6 +97,8 @@ options = {
     # branch offset: 24 bit immediate, just try each individual bit set
     # since 2^24 is a lot of possibilities
     "@b": [str(1 << i) for i in range(24)],
+    # 5 bit shift amount
+    "@s": [str(i) for i in range(32)],
 }
 
 regex = r"@([a-zA-Z0-9]+)"
@@ -105,6 +110,8 @@ test_cases = [
     ("add", [4, 12, 1], "add r4, r12, r1"),
     ("add_imm", [0, 0, 0], "add r0, r0, #0"),
     ("add_imm", [5, 3, 212], "add r5, r3, #212"),
+    ("add_lsl", [0, 0, 0, 0], "add r0, r0, r0, LSL #0"),
+    ("add_lsl", [1, 4, 1, 20], "add r1, r4, r1, LSL #20"),
     ("sub", [0, 0, 0], "sub r0, r0, r0"),
     ("sub", [3, 2, 1], "sub r3, r2, r1"),
     ("sub_imm", [0, 0, 0], "sub r0, r0, #0"),
@@ -117,13 +124,17 @@ test_cases = [
     ("mov_reg", [5, 10], "mov r5, r10"),
     ("mov_imm", [0, 0], "mov r0, #0"),
     ("mov_imm", [2, 91], "mov r2, #91"),
-    ("ldr_no_off", [0, 0], "ldr r0, [r0]"),
-    ("ldr_no_off", [9, 2], "ldr r9, [r2]"),
+    ("ldr", [0, 0], "ldr r0, [r0]"),
+    ("ldr", [9, 2], "ldr r9, [r2]"),
     ("ldr_imm_off", [0, 0, 0], "ldr r0, [r0, #0]"),
     ("ldr_imm_off", [1, 2, 3], "ldr r1, [r2, #3]"),
-    ("str_no_off", [0, 0], "str r0, [r0]"),
-    ("str_no_off", [3, 0], "str r3, [r0]"),
+    ("str", [0, 0], "str r0, [r0]"),
+    ("str", [3, 0], "str r3, [r0]"),
     ("str_imm_off", [0, 0, 0], "str r0, [r0, #0]"),
     ("str_imm_off", [5, 0, 14], "str r5, [r0, #14]"),
-    ("nop", [], "nop")
+    ("nop", [], "nop"),
+    ("bx", [0], "bx r0"),
+    ("bx", [8], "bx r8"),
+    ("blx", [0], "blx r0"),
+    ("blx", [5], "blx r5"),
 ]

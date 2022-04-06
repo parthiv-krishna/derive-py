@@ -117,6 +117,8 @@ def main(config):
 
     # Solve instructions
     for instr_name, template, arg_names in templates:
+        if instr_name in solved:
+            raise RuntimeError(f"Duplicate instruction name: {instr_name}")
         print(f"Solving {instr_name}")
         solved[instr_name] = solve_instruction(asm, instr_name, template, arg_names, options, regex)
 
