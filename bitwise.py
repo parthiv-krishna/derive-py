@@ -86,3 +86,31 @@ def FFS(a):
         if (a & (1 << i)) != 0:
             return i
     return -1
+
+def bit_get(a, i):
+    """Gets the ith bit of a byte array or int
+
+    Args:
+        a (bytes | int)
+        i (int)
+
+    Returns:
+        int: a[i]
+    """
+    if type(a) is bytes:
+        a = to_int(a)
+    return (a >> i) & 1
+
+def bit_set(a, i):
+    """Sets the ith bit of a byte array or int
+
+    Args:
+        a (bytes | int)
+        i (int)
+
+    Returns:
+        bytes: a | (1 << i)
+    """
+    if type(a) is int:
+        a = to_bytes(a)
+    return OR(a, to_bytes(1 << i, len(a)))
