@@ -3,85 +3,99 @@ import re
 import argparse
 
 import bitwise
-from instruction import Instruction
+from instruction import Instruction, Field
 
-def solve_instruction(asm, instr_name, template, arg_names, options, regex):
+def solve_instruction(asm, instr_name, template, regex):
     """Solves a template and prints the resulting assembly.
     
     Args:
         asm (Assembler): The assembler to use.
         instr_name (str): The name of the instruction.
         template (str): The template to solve.
-        arg_names (list(str)): The names of the arguments specified in the template.
-        options (dict): The options to choose from for the template arguments.
         regex (str): The regular expression to use to match the template arguments.
 
     Returns:
         Instruction: The instruction that was solved from the given information.
     """
 
+    instruction = Instruction(asm.arch(), instr_name)
+
     matches = list(re.finditer(regex, template))
+    # field_widths = {match.group(1): int(match.group(2)) for match in matches}
 
-    # should encode opcode bits
-    instr_unchanged = None
-
-    # dictionary mapping {argname: offset}
-    args = {}
-
-    if len(matches) != len(arg_names):
-        raise RuntimeError(f"Template `{template}` has {len(matches)} arguments but there are {len(arg_names)} arg names: {arg_names}.")
+    # for instruction as a whole
+    instr_always_0 = None
+    instr_always_1 = None
 
     if len(matches) == 0:
         # no arguments
-        instr = asm.assemble(template)
-        instr_unchanged = instr
+        binary = asm.assemble(template)
+        instr_always_1 = binary
 
     # iterate through each matched location in the template
-    for match, arg_name in zip(matches, arg_names):
+    for i in range(len(matches)):
+                
 
-        # for the current location
-        always_0 = None
-        always_1 = None
+        curr_match = matches[i]
 
-        for option in options[match.group(0)]:
-            # insert current option into selected location
-            filled_template = template[:match.start()] + option + template[match.end():]
-            for fmt in options:
-                # set everything else to default value
-                filled_template = filled_template.replace(fmt, options[fmt][0])
+        field_name = curr_match.group(1)
+        field_width = int(curr_match.group(2))
+
+        # for the current field
+        field_always_0 = None
+        field_always_1 = None
+
+        # stores the binary for each bit_pos
+        encodings = []
+
+        for bit_pos in range(field_width):
+            value = 1 << bit_pos
+
+            # insert current option into selected location, zero everything else
+            filled_template = template[:curr_match.start()] + str(value) + template[curr_match.end():]
+            filled_template = re.sub(regex, "0", filled_template)
             
-            # generate binary for instruction
-            instr = asm.assemble(filled_template)
+            # # generate binary for instruction
+            binary = asm.assemble(filled_template)
 
             # setup always_0 and always_1 to match length of instruction
-            if instr_unchanged is None:
-                instr_unchanged = bytes([0xFF for i in range(len(instr))]) 
-            if always_0 is None:
-                always_0 = bytes([0xFF for i in range(len(instr))])
-                always_1 = bytes([0xFF for i in range(len(instr))])
+            if instr_always_0 is None:
+                instr_always_0 = bytes([0xFF for i in range(len(binary))])
+                instr_always_1 = bytes([0xFF for i in range(len(binary))])
+            if field_always_0 is None:
+                field_always_0 = bytes([0xFF for i in range(len(binary))])
+                field_always_1 = bytes([0xFF for i in range(len(binary))])
 
 
-            # print(filled_template, format(int.from_bytes(instr, byteorder="big"), 'x'))
-            always_0 = bitwise.AND(always_0, bitwise.NOT(instr))
-            always_1 = bitwise.AND(always_1, instr)
+            field_always_0 = bitwise.AND(field_always_0, bitwise.NOT(binary))
+            field_always_1 = bitwise.AND(field_always_1, binary)
 
-        both = bitwise.AND(always_0, always_1) 
-        if (bitwise.to_int(both) != 0):
-            raise RuntimeError(f"Impossible, some bits are both always 0 and 1: {both}")
+            encodings.append(binary)
 
-        unchanged = bitwise.OR(always_0, always_1) # should be the instruction encoding
-        my_bits = bitwise.NOT(unchanged)
-        args[arg_name] = bitwise.FFS(my_bits) # assumes contiguous fields...
-        if args[arg_name] == -1:
-            raise RuntimeError(f"Impossible, my_bits is all 0s")
+        both_0_and_1 = bitwise.AND(field_always_0, field_always_1) 
+        if (bitwise.to_int(both_0_and_1) != 0):
+            raise RuntimeError(f"Impossible, some bits are both always 0 and 1: {both_0_and_1}")
 
+        field_unchanged = bitwise.OR(field_always_0, field_always_1)
+        field_bits = bitwise.NOT(field_unchanged)
+        
+        field = Field(field_name)
 
-        instr_unchanged = bitwise.AND(instr_unchanged, unchanged) # update opcode bits
+        for field_idx in range(field_width):
+            one_hot = bitwise.AND(field_bits, encodings[field_idx])
+            instr_idx = bitwise.FFS(one_hot)
+            field.set_instr_idx(field_idx, instr_idx)
+        
+        instruction.add_fields(field)
 
-    opcode = bitwise.AND(instr_unchanged, instr)
-    return Instruction(asm.arch(), instr_name, opcode, args)
+        instr_always_0 = bitwise.AND(instr_always_0, field_always_0)
+        instr_always_1 = bitwise.AND(instr_always_1, field_always_1)
 
-def test_instruction(asm, instr, args, assembly):
+    instruction.set_opcode(instr_always_1)
+
+    return instruction
+
+def test_instruction(asm, instr: Instruction, args, assembly):
     """Tests a single instruction's solved encoding against the expected encoding.
 
     Args:
@@ -93,6 +107,10 @@ def test_instruction(asm, instr, args, assembly):
     Raises:
         RuntimeError: _description_
     """
+    for field in instr.fields:
+        if field.name not in args:
+            raise RuntimeError(f"Bad test {assembly}: {field.name} not found in args")
+
     actual = instr.assemble(args)
     expected = bitwise.to_int(asm.assemble(assembly))
     if actual != expected:
@@ -103,8 +121,6 @@ def main(config):
     asm = config.asm
     # List of (instr_name, template, list of argument names)
     templates = config.templates
-    # Dictionary of {argument: list of possible values}
-    options = config.options
     # Regular expression to match arguments in templates
     regex = config.regex
     # Output header file
@@ -116,11 +132,11 @@ def main(config):
     solved = {}
 
     # Solve instructions
-    for instr_name, template, arg_names in templates:
+    for instr_name, template in templates:
         if instr_name in solved:
             raise RuntimeError(f"Duplicate instruction name: {instr_name}")
         print(f"Solving {instr_name}")
-        solved[instr_name] = solve_instruction(asm, instr_name, template, arg_names, options, regex)
+        solved[instr_name] = solve_instruction(asm, instr_name, template, regex)
 
     # Test instructions
     print(f"Running test cases")
