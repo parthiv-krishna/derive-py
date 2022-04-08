@@ -3,6 +3,63 @@ import subprocess
 
 from assembler import Assembler
 
+output_file = "./arm-none-eabi-insts.h"
+
+regex = r"@([a-zA-Z0-9]+):(-?[0-9]+)"
+
+templates = [
+    ("add", "add r@dst:4, r@src1:4, r@src2:4"),
+    ("add_imm", "add r@dst:4, r@src:4, #@imm:8"),
+    ("add_lsl", "add r@dst:4, r@src1:4, r@src2:4, LSL #@shift:5"),
+    ("sub", "sub r@dst:4, r@src1:4, r@src2:4"),
+    ("sub_imm", "sub r@dst:4, r@src:4, #@imm:8"),
+    ("and", "and r@dst:4, r@src1:4, r@src2:4"),
+    ("or", "orr r@dst:4, r@src1:4, r@src2:4"),
+    ("mov", "mov r@dst:4, r@src:4"),
+    ("mov_imm", "mov r@dst:4, #@imm:8"),
+    ("ldr", "ldr r@dst:4, [r@addr:4]"),
+    ("ldr_imm_off", "ldr r@dst:4, [r@addr:4, #@imm:8]"),
+    ("str", "str r@src:4, [r@addr:4]"),
+    ("str_imm_off", "str r@src:4, [r@addr:4, #@imm:8]"),
+    ("nop", "nop"),
+    ("bx", "bx r@reg:4"),
+    ("blx", "blx r@reg:4"),
+]
+
+test_cases = [
+    ("add", {"dst": 0, "src1": 0, "src2": 0}, "add r0, r0, r0"),
+    ("add", {"dst": 4, "src1": 12, "src2": 1}, "add r4, r12, r1"),
+    ("add_imm", {"dst": 0, "src": 0, "imm": 0}, "add r0, r0, #0"),
+    ("add_imm", {"dst": 5, "src": 3, "imm": 212}, "add r5, r3, #212"),
+    ("add_lsl", {"dst": 0, "src1": 0, "src2": 0, "shift": 0}, "add r0, r0, r0, LSL #0"),
+    ("add_lsl", {"dst": 1, "src1": 4, "src2": 1, "shift": 20}, "add r1, r4, r1, LSL #20"),
+    ("sub", {"dst": 0, "src1": 0, "src2": 0}, "sub r0, r0, r0"),
+    ("sub", {"dst": 3, "src1": 2, "src2": 1}, "sub r3, r2, r1"),
+    ("sub_imm", {"dst": 0, "src": 0, "imm": 0}, "sub r0, r0, #0"),
+    ("sub_imm", {"dst": 8, "src": 2, "imm": 82}, "sub r8, r2, #82"),
+    ("and", {"dst": 0, "src1": 0, "src2": 0}, "and r0, r0, r0"),
+    ("and", {"dst": 1, "src1": 2, "src2": 3}, "and r1, r2, r3"),
+    ("or", {"dst": 0, "src1": 0, "src2": 0}, "orr r0, r0, r0"),
+    ("or", {"dst": 4, "src1": 5, "src2": 7}, "orr r4, r5, r7"),
+    ("mov", {"dst": 0, "src": 0}, "mov r0, r0"),
+    ("mov", {"dst": 5, "src": 10}, "mov r5, r10"),
+    ("mov_imm", {"dst": 0, "imm": 0}, "mov r0, #0"),
+    ("mov_imm", {"dst": 2, "imm": 91}, "mov r2, #91"),
+    ("ldr", {"dst": 0, "addr": 0}, "ldr r0, [r0]"),
+    ("ldr", {"dst": 9, "addr": 2}, "ldr r9, [r2]"),
+    ("ldr_imm_off", {"dst": 0, "addr": 0, "imm": 0}, "ldr r0, [r0, #0]"),
+    ("ldr_imm_off", {"dst": 1, "addr": 2, "imm": 3}, "ldr r1, [r2, #3]"),
+    ("str", {"src": 0, "addr": 0}, "str r0, [r0]"),
+    ("str", {"src": 3, "addr": 0}, "str r3, [r0]"),
+    ("str_imm_off", {"src": 0, "addr": 0, "imm": 0}, "str r0, [r0, #0]"),
+    ("str_imm_off", {"src": 5, "addr": 0, "imm": 14}, "str r5, [r0, #14]"),
+    ("nop", {}, "nop"),
+    ("bx", {"reg": 0}, "bx r0"),
+    ("bx", {"reg": 8}, "bx r8"),
+    ("blx", {"reg": 0}, "blx r0"),
+    ("blx", {"reg": 5}, "blx r5"),
+]
+
 class ArmNoneEabiAssembler(Assembler):
     """arm-none-eabi assembler (for r/pi)"""
 
@@ -68,73 +125,3 @@ class ArmNoneEabiAssembler(Assembler):
 
 asm = ArmNoneEabiAssembler({"memmap": "memmap",
                             "filepath": "./test"})
-
-templates = [
-    ("add", "add @r, @r, @r", ["dst", "src1", "src2"]),
-    ("add_imm", "add @r, @r, #@i", ["dst", "src", "imm"]),
-    ("add_lsl", "add @r, @r, @r, LSL #@s", ["dst", "src1", "src2", "shift"]),
-    ("sub", "sub @r, @r, @r", ["dst", "src1", "src2"]),
-    ("sub_imm", "sub @r, @r, #@i", ["dst", "src", "imm"]),
-    ("and", "and @r, @r, @r", ["dst", "src1", "src2"]),
-    ("or", "orr @r, @r, @r", ["dst", "src1", "src2"]),
-    ("mov_reg", "mov @r, @r", ["dst", "src"]),
-    ("mov_imm", "mov @r, #@i", ["dst", "imm"]),
-    ("ldr", "ldr @r, [@r]", ["dst", "addr"]),
-    ("ldr_imm_off", "ldr @r, [@r, #@i]", ["dst", "addr", "offset"]),
-    ("str", "str @r, [@r]", ["src", "addr"]),
-    ("str_imm_off", "str @r, [@r, #@i]", ["src", "addr", "offset"]),
-    ("nop", "nop", []),
-    ("bx", "bx @r", ["reg"]),
-    ("blx", "blx @r", ["reg"]),
-    # ("b", "b @b", ["offset"]),
-]
-
-options = {
-    # 16 registers
-    "@r": ["r" + str(i) for i in range(16)],
-    # 8 bit immediate
-    "@i": [str(i) for i in range(256)],
-    # branch offset: 24 bit immediate, just try each individual bit set
-    # since 2^24 is a lot of possibilities
-    "@b": [str(1 << i) for i in range(24)],
-    # 5 bit shift amount
-    "@s": [str(i) for i in range(32)],
-}
-
-regex = r"@([a-zA-Z0-9]+)"
-
-output_file = "./arm-none-eabi-insts.h"
-
-test_cases = [
-    ("add", [0, 0, 0], "add r0, r0, r0"),
-    ("add", [4, 12, 1], "add r4, r12, r1"),
-    ("add_imm", [0, 0, 0], "add r0, r0, #0"),
-    ("add_imm", [5, 3, 212], "add r5, r3, #212"),
-    ("add_lsl", [0, 0, 0, 0], "add r0, r0, r0, LSL #0"),
-    ("add_lsl", [1, 4, 1, 20], "add r1, r4, r1, LSL #20"),
-    ("sub", [0, 0, 0], "sub r0, r0, r0"),
-    ("sub", [3, 2, 1], "sub r3, r2, r1"),
-    ("sub_imm", [0, 0, 0], "sub r0, r0, #0"),
-    ("sub_imm", [8, 2, 82], "sub r8, r2, #82"),
-    ("and", [0, 0, 0], "and r0, r0, r0"),
-    ("and", [1, 2, 3], "and r1, r2, r3"),
-    ("or", [0, 0, 0], "orr r0, r0, r0"),
-    ("or", [4, 5, 7], "orr r4, r5, r7"),
-    ("mov_reg", [0, 0], "mov r0, r0"),
-    ("mov_reg", [5, 10], "mov r5, r10"),
-    ("mov_imm", [0, 0], "mov r0, #0"),
-    ("mov_imm", [2, 91], "mov r2, #91"),
-    ("ldr", [0, 0], "ldr r0, [r0]"),
-    ("ldr", [9, 2], "ldr r9, [r2]"),
-    ("ldr_imm_off", [0, 0, 0], "ldr r0, [r0, #0]"),
-    ("ldr_imm_off", [1, 2, 3], "ldr r1, [r2, #3]"),
-    ("str", [0, 0], "str r0, [r0]"),
-    ("str", [3, 0], "str r3, [r0]"),
-    ("str_imm_off", [0, 0, 0], "str r0, [r0, #0]"),
-    ("str_imm_off", [5, 0, 14], "str r5, [r0, #14]"),
-    ("nop", [], "nop"),
-    ("bx", [0], "bx r0"),
-    ("bx", [8], "bx r8"),
-    ("blx", [0], "blx r0"),
-    ("blx", [5], "blx r5"),
-]
