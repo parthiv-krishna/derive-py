@@ -58,6 +58,19 @@ def OR(a, b):
     result = to_int(a) | to_int(b)
     return to_bytes(result, max(len(a), len(b)))
 
+def XOR(a, b):
+    """Performs bitwise xor on two given byte arrays.
+
+    Args:
+        a (bytes) 
+        b (bytes)
+
+    Returns:
+        bytes: a ^ b
+    """
+    result = to_int(a) ^ to_int(b)
+    return to_bytes(result, max(len(a), len(b)))
+
 def NOT(a):
     """Performs bitwise not on a given byte array.
 
@@ -67,9 +80,8 @@ def NOT(a):
     Returns:
         bytes: ~a
     """
-    ones = to_int(bytes([0xFF for i in range(len(a))]))
-    result = to_int(a) ^ ones # a ^ 1 = ~a
-    return to_bytes(result, len(a))
+    ones = bytes([0xFF for i in range(len(a))])
+    return XOR(a, ones) # a ^ 1 = ~a
 
 def FFS(a):
     """Finds index of least significant set bit.
@@ -82,7 +94,7 @@ def FFS(a):
     """
     max_idx = len(a) * 8
     a = to_int(a) # use int value for and
-    for i in range(max_idx):
+    for i in reversed(range(max_idx)):
         if (a & (1 << i)) != 0:
             return i
     return -1
