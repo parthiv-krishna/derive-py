@@ -2,6 +2,7 @@ import bitwise
 
 class Field:
     """Class representing a field in an instruction"""
+
     def __init__(self, name):
         self.name = name
         self.locs = {}
@@ -18,6 +19,8 @@ class Field:
         result = 0
         for field_idx, instr_idx in self.locs.items():
             bit = bitwise.bit_get(value, field_idx)
+            if (field_idx == -1):
+                raise RuntimeError(f"Invalid bit position {field_idx} in {self.name}")
             result |= (bit << instr_idx)
         return bitwise.to_bytes(result, length)
 

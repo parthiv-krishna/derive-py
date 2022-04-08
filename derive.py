@@ -40,6 +40,10 @@ def solve_instruction(asm, instr_name, template, regex):
 
         field_name = curr_match.group(1)
         field_width = int(curr_match.group(2))
+        neg = 0
+        if field_width < 0:
+            field_width *= -1
+            neg = 1
 
         # for the current field
         field_always_0 = None
@@ -48,8 +52,11 @@ def solve_instruction(asm, instr_name, template, regex):
         # stores the binary for each bit_pos
         encodings = []
 
-        for bit_pos in range(field_width):
+        for bit_pos in range(field_width + neg):
             value = 1 << bit_pos
+            if bit_pos == field_width:
+                # negative
+                value = -1 * (1 << (field_width - 1))
 
             # insert current option into selected location, zero everything else
             filled_template = template[:curr_match.start()] + str(value) + template[curr_match.end():]
@@ -60,11 +67,11 @@ def solve_instruction(asm, instr_name, template, regex):
 
             # setup always_0 and always_1 to match length of instruction
             if instr_always_0 is None:
-                instr_always_0 = bytes([0xFF for i in range(len(binary))])
-                instr_always_1 = bytes([0xFF for i in range(len(binary))])
+                instr_always_0 = bytes([0xFF for _ in range(len(binary))])
+                instr_always_1 = bytes([0xFF for _ in range(len(binary))])
             if field_always_0 is None:
-                field_always_0 = bytes([0xFF for i in range(len(binary))])
-                field_always_1 = bytes([0xFF for i in range(len(binary))])
+                field_always_0 = bytes([0xFF for _ in range(len(binary))])
+                field_always_1 = bytes([0xFF for _ in range(len(binary))])
 
 
             field_always_0 = bitwise.AND(field_always_0, bitwise.NOT(binary))
@@ -81,7 +88,7 @@ def solve_instruction(asm, instr_name, template, regex):
         
         field = Field(field_name)
 
-        for field_idx in range(field_width):
+        for field_idx in range(field_width + neg):
             one_hot = bitwise.AND(field_bits, encodings[field_idx])
             instr_idx = bitwise.FFS(one_hot)
             field.set_instr_idx(field_idx, instr_idx)
@@ -92,7 +99,7 @@ def solve_instruction(asm, instr_name, template, regex):
         instr_always_1 = bitwise.AND(instr_always_1, field_always_1)
 
     instruction.set_opcode(instr_always_1)
-
+    # print(instruction.to_c_function())
     return instruction
 
 def test_instruction(asm, instr: Instruction, args, assembly):
